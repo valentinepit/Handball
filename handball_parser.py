@@ -90,7 +90,7 @@ class Bot:
     def live_checking(self, totals_dic, event):
         #print(f'Все матчи с коэфф-ами {totals_dic}')
         for total in totals_dic:
-            print(f'\n {total}')
+            # print(f'\n {total}')
             if self.bet_start(total, totals_dic[total][1]):
                 if self.check(totals_dic, total):
                     self.old_matches.append(total)
@@ -100,7 +100,7 @@ class Bot:
                     self.totals.pop(total)
 
     def check(self, totals, total):
-        print(f'Текущий коэф-ен {totals[total]}, записанный {self.totals[total]}')
+        print(f'Текущий максимальный коэф-ент {totals[total]}, записанный {self.totals[total]}')
         if totals[total][0] >= self.totals[total][0] + 6:
             return True
         else:
@@ -171,7 +171,7 @@ class Bot:
                 target_total = self.totals[teams][0] + 6
                 try:
                     if total and total < target_total:
-                        print(f' {teams}\n предматчевый {total}, необходимый {target_total} \n')
+                        #print(f' {teams}\n предматчевый {total}, необходимый {target_total} \n')
                         game_total = {teams: [total, self.totals[teams][1]]}
                         totals.update(game_total)
                         continue
@@ -235,7 +235,7 @@ class Bot:
                 item.click()
                 return text
         try:
-            print(f'максимальный тотал на текущий момент {total_item.text}')
+            # print(f'максимальный тотал на текущий момент {total_item.text}')
             text = total_item.text
             total_item.click()
         except:
