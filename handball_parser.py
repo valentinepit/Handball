@@ -1,10 +1,7 @@
 from selenium import webdriver
-from selenium.common.exceptions import WebDriverException
-from selenium.webdriver.common.action_chains import ActionChains
 from time import sleep
-import datetime
 import T_bot as telega
-
+import datetime
 
 def get_liga(driver):
     # Получаем все гантбольные события из меню, исключая женские.
@@ -37,12 +34,16 @@ class Bot:
         self.old_matches = []
 
     def navigate(self, url):
+        if url == 'https://1xstavka.ru/line/Handball/':
+            mode = 'line'
+        else:
+            mode = 'live'
         live_matches = line_matches = []
         options = webdriver.ChromeOptions()
         options.add_argument('headless')
         options.add_argument('window-size=1920x935')
         options.add_argument("--kiosk")
-        options.add_argument("--log-path=tennis.log")
+        #options.add_argument("--log-path=tennis.log")
         options.add_argument("--log-level=3")
         driver = webdriver.Chrome(options=options)
         # получаем словарь событий с url
@@ -73,16 +74,16 @@ class Bot:
             # выводим на экран название события
             event = header
             print('\n', event, '\n', '_' * 30)
-            totals = self.get_total(driver, url)
+            totals = self.get_total(driver, mode)
 
-            if url == 'https://1xstavka.ru/line/Handball/':
+            if mode == 'line':
                 line_matches += list(totals)
                 self.totals.update(totals)
             else:
                 live_matches += list(totals)
                 self.live_checking(totals, event)
 
-        self.itog(url, line_matches, live_matches)
+        self.itog(mode, line_matches, live_matches)
         driver.close()
         driver.quit()
 
@@ -101,14 +102,12 @@ class Bot:
     def check(self, totals, total):
         print(f'Текущий коэф-ен {totals[total]}, записанный {self.totals[total]}')
         if totals[total][0] >= self.totals[total][0] + 6:
-            #print("Нужный тотал найден")
             return True
         else:
-            #print("Нужный тотал не найден")
             return None
 
-    def itog(self, url, line_matches, live_matches):
-        if url == 'https://1xstavka.ru/line/Handball/':
+    def itog(self, mode, line_matches, live_matches):
+        if mode == 'line':
             self.line_matches = line_matches
             print(line_matches)
             print(f'Количество ожидаемых матчей {len(line_matches)}')
@@ -119,8 +118,8 @@ class Bot:
             print(f'self.totals= {self.totals}')
 
     def bet_start(self, teams, koeff):
+        # Проверяем есть ли команда в предматчевом списке и коэффициент > 1.3
         if teams in self.totals:
-            # print(f'Команда есть в списке {teams}')
             if koeff >= 1.3:
                 # print('Коэффициент > 1,3')
                 return True
@@ -133,7 +132,6 @@ class Bot:
         # добавляем его в список, затем удаляем все матчи из списка
         actual_matches = self.live_matches + self.line_matches
         old_matches = []
-
         for i in self.totals:
             if i not in actual_matches:
                 old_matches.append(i)
@@ -143,7 +141,7 @@ class Bot:
         print(f'\nЭти матчи уже прошли {old_matches}')
         print(f'количество матчей {len(self.totals)}\n self.matches = {self.totals}')
 
-    def get_total(self, driver, url):
+    def get_total(self, driver, mode):
         # Со страницы события получаем название матча
         # А также значение Тотал М. Возвращаем словарь {матч: [тотал, значение]}
         totals = {}
@@ -151,7 +149,7 @@ class Bot:
 
         # перебираем все игры в событии
         for game in games:
-            if not self.check_time(game):
+            if not self.check_time(game, mode):
                 continue
             total = None
             try:
@@ -163,7 +161,7 @@ class Bot:
             if 'Хозяева' in teams or 'Bears' in teams:
                 continue
             # Если мы проверяем LIVE то необходимо выбрать подходящее значение тотал
-            if url == 'https://1xstavka.ru/live/Handball/':
+            if mode == 'live':
                 # проверяем есть ли этот матч в списке матчей с тоталами для сравнения
                 # если мы не нашли матч, то пропускаем его
                 if teams not in self.totals:
@@ -173,7 +171,6 @@ class Bot:
                 target_total = self.totals[teams][0] + 6
                 try:
                     if total and total < target_total:
-                        #print(f'Подходящий тотал не найден')
                         print(f' {teams}\n предматчевый {total}, необходимый {target_total} \n')
                         game_total = {teams: [total, self.totals[teams][1]]}
                         totals.update(game_total)
@@ -184,7 +181,6 @@ class Bot:
             if not total:
                 print(f'Нужный тотал не найден или рассматривается LINE')
                 total = bets[7]
-            # print(f'Матч между {teams}')
             if total != '-':
                 print(f'Тотал есть и не равен -')
                 try:
@@ -202,13 +198,16 @@ class Bot:
         return totals
 
 
-    def check_time(self, game):
-        # c-events__time-info
+    def check_time(self, game, mode):
+        # Отбираем только те матчи, которые пройдут в ближайшие 24 часа
         time_raw = game.find_element_by_class_name('c-events__time').get_attribute('title')
         if ' дн' in time_raw:
             return None
         else:
-            print(f' Время до начала матча {time_raw}')
+            if mode == 'line':
+                print(f' Время до начала матча {time_raw}')
+            else:
+                print(f'матч идет в настоящее время')
         return True
 
 
@@ -226,7 +225,6 @@ class Bot:
             return
         for item in total_items:
             try:
-                #print(f'item.text = {item.text}')
                 text = float(item.text)
                 total_item = item
             except:
@@ -255,7 +253,8 @@ def main():
     live_url = 'https://1xstavka.ru/live/Handball/'
     t = 3600
     while True:
-        print(f'counter = {counter}')
+        now = datetime.datetime.now()
+        print(f'counter = {counter}, {str(now)}')
         if t % 3600 == 0:
             print('LINE')
             x_bot.navigate(main_url)
