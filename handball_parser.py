@@ -2,7 +2,7 @@ from selenium import webdriver
 from selenium.common.exceptions import WebDriverException
 from selenium.webdriver.common.action_chains import ActionChains
 from time import sleep
-
+import datetime
 import T_bot as telega
 
 
@@ -146,8 +146,11 @@ class Bot:
         # А также значение Тотал М. Возвращаем словарь {матч: [тотал, значение]}
         totals = {}
         games = driver.find_elements_by_class_name('c-events__item_game')
+
         # перебираем все игры в событии
         for game in games:
+            if not self.check_time(game):
+                continue
             total = None
             try:
                 head = game.find_element_by_class_name('c-events__teams')
@@ -195,6 +198,17 @@ class Bot:
                 game_total = {teams: [total, koeff]}
                 totals.update(game_total)
         return totals
+
+
+    def check_time(self, game):
+        # c-events__time-info
+        time_raw = game.find_element_by_class_name('c-events__time').get_attribute('title')
+        if ' дн' in time_raw:
+            return None
+        else:
+            print(f' Время до начала матча {time_raw}')
+        return True
+
 
     def find_bet(self, teams, game):
         # Нажимаем на кнопку со значением тотала и выбираем тот, который на 6 больше предматчевого
