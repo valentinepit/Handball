@@ -42,6 +42,8 @@ class Bot:
         options.add_argument('headless')
         options.add_argument('window-size=1920x935')
         options.add_argument("--kiosk")
+        options.add_argument("--log-path=tennis.log")
+        options.add_argument("--log-level=3")
         driver = webdriver.Chrome(options=options)
         # получаем словарь событий с url
         try:
@@ -56,8 +58,8 @@ class Bot:
             print(f' Header = False')
             close_all(driver)
             return None
-
         if not headers:
+            print('Ошибка при потыке перейти на сайт букмекера')
             close_all(driver)
             return
 
@@ -158,7 +160,7 @@ class Bot:
                 continue
             # teams = название матча
             teams = head.get_attribute('title')
-            if 'Хозяева' in teams:
+            if 'Хозяева' in teams or 'Bears' in teams:
                 continue
             # Если мы проверяем LIVE то необходимо выбрать подходящее значение тотал
             if url == 'https://1xstavka.ru/live/Handball/':
