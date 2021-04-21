@@ -1,5 +1,8 @@
 from selenium import webdriver
 from time import sleep
+
+from selenium.common.exceptions import StaleElementReferenceException
+
 import T_bot as telega
 import datetime
 
@@ -24,6 +27,19 @@ def close_all(driver):
     return None
 
 
+def check_time(game, mode):
+    # Отбираем только те матчи, которые пройдут в ближайшие 24 часа
+    time_raw = game.find_element_by_class_name('c-events__time').get_attribute('title')
+    if ' дн' in time_raw:
+        return None
+    else:
+        if mode == 'line':
+            print(f' Время до начала матча {time_raw}')
+        else:
+            print(f'матч идет в настоящее время')
+    return True
+
+
 class Bot:
     def __init__(self):
         self.totals = {}
@@ -43,7 +59,6 @@ class Bot:
         options.add_argument('headless')
         options.add_argument('window-size=1920x935')
         options.add_argument("--kiosk")
-        #options.add_argument("--log-path=tennis.log")
         options.add_argument("--log-level=3")
         driver = webdriver.Chrome(options=options)
         # получаем словарь событий с url
@@ -52,6 +67,7 @@ class Bot:
             driver.implicitly_wait(30)
         except Exception:
             print('Ошибка при потыке перейти на сайт букмекера')
+            close_all(driver)
             return None
         try:
             headers = get_liga(driver)
@@ -60,7 +76,7 @@ class Bot:
             close_all(driver)
             return None
         if not headers:
-            print('Ошибка при потыке перейти на сайт букмекера')
+            print('Ошибка получения списка матчей')
             close_all(driver)
             return
 
@@ -88,25 +104,28 @@ class Bot:
         driver.quit()
 
     def live_checking(self, totals_dic, event):
-        #print(f'Все матчи с коэфф-ами {totals_dic}')
+        # Проверка всех матчей из списка текущих, формирование сообщения для бота, отправка сообщения
         for total in totals_dic:
-            # print(f'\n {total}')
             if self.bet_start(total, totals_dic[total][1]):
                 if self.check(totals_dic, total):
                     self.old_matches.append(total)
                     event_msg = f'{event}\n{total} \n Коэффициент перед матчем {self.totals[total]}\n ' \
                                 f'Текущий коэффициент {totals_dic[total]}'
+                    #print(event_msg)
                     telega.telegram_bot_send_text(event_msg)
                     self.totals.pop(total)
 
     def check(self, totals, total):
+        # Проверка тотала. Если тотал достиг необходимого значения - возвращаем True
         print(f'Текущий максимальный коэф-ент {totals[total]}, записанный {self.totals[total]}')
-        if totals[total][0] >= self.totals[total][0] + 6:
+        if totals[total][0] >= self.totals[total][0] + 6 \
+                or totals[total][0] <= self.totals[total][0] - 6:
             return True
         else:
             return None
 
     def itog(self, mode, line_matches, live_matches):
+        # Обновление списка матчей
         if mode == 'line':
             self.line_matches = line_matches
             print(line_matches)
@@ -121,10 +140,8 @@ class Bot:
         # Проверяем есть ли команда в предматчевом списке и коэффициент > 1.3
         if teams in self.totals:
             if koeff >= 1.3:
-                # print('Коэффициент > 1,3')
                 return True
             else:
-                # print('Коэффициент < 1,3')
                 return None
 
     def save_matches(self):
@@ -149,7 +166,7 @@ class Bot:
 
         # перебираем все игры в событии
         for game in games:
-            if not self.check_time(game, mode):
+            if not check_time(game, mode):
                 continue
             total = None
             try:
@@ -168,16 +185,20 @@ class Bot:
                     print(f'Комманды нет в списке {teams}')
                     continue
                 total = self.find_bet(teams, game)
-                target_total = self.totals[teams][0] + 6
+                target_total_max = self.totals[teams][0] + 6
+                target_total_min = self.totals[teams][0] - 6
                 try:
-                    if total and total < target_total:
-                        #print(f' {teams}\n предматчевый {total}, необходимый {target_total} \n')
+                    if total and target_total_max > total > target_total_min:
                         game_total = {teams: [total, self.totals[teams][1]]}
                         totals.update(game_total)
                         continue
                 except:
                     continue
-            bets = game.find_element_by_class_name('c-bets').text.split()
+            try:
+                bets = game.find_element_by_class_name('c-bets').text.split()
+            except StaleElementReferenceException:
+                print(f'{teams} не удалось получить даные')
+                continue
             if not total:
                 print(f'Нужный тотал не найден или рассматривается LINE')
                 total = bets[7]
@@ -196,20 +217,6 @@ class Bot:
                 game_total = {teams: [total, koeff]}
                 totals.update(game_total)
         return totals
-
-
-    def check_time(self, game, mode):
-        # Отбираем только те матчи, которые пройдут в ближайшие 24 часа
-        time_raw = game.find_element_by_class_name('c-events__time').get_attribute('title')
-        if ' дн' in time_raw:
-            return None
-        else:
-            if mode == 'line':
-                print(f' Время до начала матча {time_raw}')
-            else:
-                print(f'матч идет в настоящее время')
-        return True
-
 
     def find_bet(self, teams, game):
         # Нажимаем на кнопку со значением тотала и выбираем тот, который на 6 больше предматчевого
@@ -230,12 +237,12 @@ class Bot:
             except:
                 print('У элемента нет текста')
                 continue
-            if text >= total_name + 6:
+            if text >= total_name + 6 or text <= total_name - 6:
                 print('Найден нужный коэффициент')
                 item.click()
                 return text
+
         try:
-            # print(f'максимальный тотал на текущий момент {total_item.text}')
             text = total_item.text
             total_item.click()
         except:
@@ -254,11 +261,13 @@ def main():
     t = 3600
     while True:
         now = datetime.datetime.now()
-        print(f'counter = {counter}, {str(now)}')
+
         if t % 3600 == 0:
             print('LINE')
+            print(f'counter = {counter}, {str(now)}\n {main_url}')
             x_bot.navigate(main_url)
         print('LIVE')
+        print(f'counter = {counter}, {str(now)}\n {live_url}')
         x_bot.navigate(live_url)
         print('#####################################')
         counter += 1
