@@ -1,10 +1,13 @@
 from selenium import webdriver
 from time import sleep
 
-from selenium.common.exceptions import StaleElementReferenceException
+from selenium.common.exceptions import StaleElementReferenceException, NoSuchElementException
 
 import T_bot as telega
 import datetime
+
+# 51.79.165.172:8080
+# PROXY = input("Proxy = ")
 
 def get_liga(driver):
     # Получаем все гантбольные события из меню, исключая женские.
@@ -29,7 +32,12 @@ def close_all(driver):
 
 def check_time(game, mode):
     # Отбираем только те матчи, которые пройдут в ближайшие 24 часа
-    time_raw = game.find_element_by_class_name('c-events__time').get_attribute('title')
+    try:
+        time_raw = game.find_element_by_class_name('c-events__time').get_attribute('title')
+    except StaleElementReferenceException:
+        return None
+    except NoSuchElementException:
+        return None
     if ' дн' in time_raw:
         return None
     else:
@@ -54,31 +62,39 @@ class Bot:
             mode = 'line'
         else:
             mode = 'live'
+        proxy = get_proxy()
         live_matches = line_matches = []
         options = webdriver.ChromeOptions()
-        options.add_argument('headless')
+        #options.add_argument('headless')
         options.add_argument('window-size=1920x935')
         options.add_argument("--kiosk")
         options.add_argument("--log-level=3")
-        driver = webdriver.Chrome(options=options)
+        headers = []
+        for px in proxy:
+            print(f'proxy = {px}')
+            options.add_argument(f'--proxy-server={px}')
+            driver = webdriver.Chrome(options=options)
         # получаем словарь событий с url
-        try:
-            driver.get(url)
-            driver.implicitly_wait(30)
-        except Exception:
-            print('Ошибка при потыке перейти на сайт букмекера')
-            close_all(driver)
-            return None
-        try:
-            headers = get_liga(driver)
-        except:
-            print(f' Header = False')
-            close_all(driver)
-            return None
-        if not headers:
-            print('Ошибка получения списка матчей')
-            close_all(driver)
-            return
+            try:
+                driver.get(url)
+                driver.implicitly_wait(30)
+
+            except Exception:
+                print('Ошибка при потыке перейти на сайт букмекера')
+                close_all(driver)
+                continue
+            try:
+                headers = get_liga(driver)
+            except:
+                print(f' Header = False')
+                close_all(driver)
+                continue
+            if not headers:
+                print('Ошибка получения списка матчей')
+                close_all(driver)
+                continue
+            else:
+                break
 
         for header in headers:
             # перебираем каждое событие
@@ -201,7 +217,10 @@ class Bot:
                 continue
             if not total:
                 print(f'Нужный тотал не найден или рассматривается LINE')
-                total = bets[7]
+                try:
+                    total = bets[7]
+                except IndexError:
+                    total = '-'
             if total != '-':
                 print(f'Тотал есть и не равен -')
                 try:
@@ -252,6 +271,23 @@ class Bot:
         else:
             return total_name
 
+def get_proxy():
+    url = 'http://foxtools.ru/Proxy'
+    options = webdriver.ChromeOptions()
+    options.add_argument('headless')
+    options.add_argument('window-size=1920x935')
+    options.add_argument("--kiosk")
+    options.add_argument("--log-level=3")
+    driver = webdriver.Chrome(options=options)
+    driver.get(url)
+    lines = driver.find_elements_by_tag_name("tr")
+    proxy_list = []
+    for item in lines[1::]:
+        cells = item.find_elements_by_tag_name("td")
+        address = cells[1].text + ':' + cells[2].text
+        proxy_list.append(address)
+    close_all(driver)
+    return proxy_list
 
 def main():
     counter = 1
@@ -261,7 +297,6 @@ def main():
     t = 3600
     while True:
         now = datetime.datetime.now()
-
         if t % 3600 == 0:
             print('LINE')
             print(f'counter = {counter}, {str(now)}\n {main_url}')
